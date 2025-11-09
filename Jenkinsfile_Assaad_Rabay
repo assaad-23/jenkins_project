@@ -1,49 +1,42 @@
 pipeline {
   agent any
-
   options { ansiColor('xterm') }
 
-  stages {
+  environment {
+    // <-- set to the exact path you saw in the logs
+    PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
+  }
 
+  stages {
     stage('Check Python') {
       steps {
         bat '''
           echo ===== PATH =====
           echo %PATH%
+
+          echo ===== Using Python =====
           where python
-          where py
-          py -V
+          "%PYTHON_EXE%" -V
+
+          rem Don't fail the build if 'py' is missing
+          where py || echo py.exe not found (ok)
         '''
       }
     }
 
     stage('Setup') {
-        steps {
-            bat '''
-            rem Clean any old/bad venv
-            if exist "venv" rmdir /s /q "venv"
+      steps {
+        bat '''
+          rem Recreate a clean venv from the real python
+          if exist "venv" rmdir /s /q "venv"
+          "%PYTHON_EXE%" -m venv "venv"
+          "venv\\Scripts\\python" -c "import sys; print('VENV PY:', sys.executable)"
 
-            rem Prefer Python 3.13; fallback to 3.x
-            py -3.13 -V >nul 2>&1
-            if errorlevel 1 (
-                echo Python 3.13 not found; falling back to default 3.x
-                set "PY_CMD=py -3"
-            ) else (
-                set "PY_CMD=py -3.13"
-            )
-
-            rem Create fresh venv with real Python (not WindowsApps)
-            %PY_CMD% -m venv "venv"
-            "venv\\Scripts\\python" -c "import sys; print('VENV PY:', sys.executable)"
-
-            rem Install deps via venv python
-            "venv\\Scripts\\python" -m pip install --upgrade pip
-            "venv\\Scripts\\python" -m pip install -r requirements.txt
-            '''
-        }
+          "venv\\Scripts\\python" -m pip install --upgrade pip
+          "venv\\Scripts\\python" -m pip install -r requirements.txt
+        '''
+      }
     }
-
-
 
     stage('Lint') {
       steps {
@@ -53,10 +46,7 @@ pipeline {
 
     stage('Test') {
       steps {
-        bat '''
-          set "PYTHONPATH=%CD%"
-          "venv\\Scripts\\python" -m pytest -q --junitxml=pytest-report.xml
-        '''
+        bat 'set "PYTHONPATH=%CD%" && "venv\\Scripts\\python" -m pytest -q --junitxml=pytest-report.xml'
       }
     }
 
@@ -79,18 +69,13 @@ pipeline {
 
     stage('Deploy') {
       steps {
-        bat '''
-          echo Deploying application...
-          powershell -NoProfile -Command "Compress-Archive -Path app.py -DestinationPath build-artifact.zip -Force"
-          echo Artifact built at: %cd%\\build-artifact.zip
-        '''
+        bat 'powershell -NoProfile -Command "Compress-Archive -Path app.py -DestinationPath build-artifact.zip -Force"'
       }
     }
   }
 
   post {
     always {
-      // Record tests even if empty so the stage doesn't fail
       junit allowEmptyResults: true, testResults: 'pytest-report.xml'
 
       script {
