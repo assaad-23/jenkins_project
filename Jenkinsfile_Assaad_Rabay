@@ -1,16 +1,49 @@
 pipeline {
   agent any
-  options { ansiColor('xterm') }  
+
+  options { ansiColor('xterm') }
+
   stages {
-    stage('Setup') {
+
+    stage('Check Python') {
       steps {
         bat '''
-          if not exist "venv" ( python -m venv "venv" )
-          "venv\\Scripts\\python" -m pip install --upgrade pip
-          "venv\\Scripts\\python" -m pip install -r requirements.txt
+          echo ===== PATH =====
+          echo %PATH%
+          where python
+          where py
+          py -V
         '''
       }
     }
+
+    stage('Setup') {
+        steps {
+            bat '''
+            rem Clean any old/bad venv
+            if exist "venv" rmdir /s /q "venv"
+
+            rem Prefer Python 3.13; fallback to 3.x
+            py -3.13 -V >nul 2>&1
+            if errorlevel 1 (
+                echo Python 3.13 not found; falling back to default 3.x
+                set "PY_CMD=py -3"
+            ) else (
+                set "PY_CMD=py -3.13"
+            )
+
+            rem Create fresh venv with real Python (not WindowsApps)
+            %PY_CMD% -m venv "venv"
+            "venv\\Scripts\\python" -c "import sys; print('VENV PY:', sys.executable)"
+
+            rem Install deps via venv python
+            "venv\\Scripts\\python" -m pip install --upgrade pip
+            "venv\\Scripts\\python" -m pip install -r requirements.txt
+            '''
+        }
+    }
+
+
 
     stage('Lint') {
       steps {
@@ -57,7 +90,7 @@ pipeline {
 
   post {
     always {
-      // Test results (ok if empty)
+      // Record tests even if empty so the stage doesn't fail
       junit allowEmptyResults: true, testResults: 'pytest-report.xml'
 
       script {
