@@ -1,0 +1,92 @@
+pipeline {
+  agent any
+
+  environment {
+    VENV = "venv"
+    PIP  = "venv\\Scripts\\pip"
+    PY   = "venv\\Scripts\\python"
+    F8   = "venv\\Scripts\\flake8"
+    PYT  = "venv\\Scripts\\pytest"
+    COV  = "venv\\Scripts\\coverage"
+    BAND = "venv\\Scripts\\bandit"
+  }
+
+  options {
+    ansiColor('xterm')
+  }
+
+  stages {
+    stage('Setup') {
+      steps {
+        bat '''
+          if not exist %VENV% (
+            python -m venv %VENV%
+          )
+          %PIP% install --upgrade pip
+          %PIP% install -r requirements.txt
+        '''
+      }
+    }
+
+    stage('Lint') {
+      steps {
+        bat '%F8% app.py'
+      }
+    }
+
+    stage('Test') {
+      steps {
+        bat '%PYT% -q --junitxml=pytest-report.xml'
+      }
+    }
+
+    stage('Coverage') {
+      steps {
+        bat '''
+          %COV% run -m pytest
+          %COV% html
+          %COV% report
+        '''
+      }
+    }
+
+    stage('Security Scan') {
+      steps {
+        bat '%BAND% -r . -f html -o bandit-report.html'
+      }
+    }
+
+    stage('Deploy') {
+      steps {
+        bat '''
+          echo Deploying application...
+          powershell -NoProfile -Command "Compress-Archive -Path app.py -DestinationPath build-artifact.zip -Force"
+          echo Artifact built at: %cd%\\build-artifact.zip
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      junit allowEmptyResults: true, testResults: 'pytest-report.xml'
+
+      publishHTML(target: [
+        reportName: 'Coverage Report',
+        reportDir: 'htmlcov',
+        reportFiles: 'index.html',
+        keepAll: true,
+        alwaysLinkToLastBuild: true
+      ])
+      publishHTML(target: [
+        reportName: 'Bandit Security Report',
+        reportDir: '.',
+        reportFiles: 'bandit-report.html',
+        keepAll: true,
+        alwaysLinkToLastBuild: true
+      ])
+
+      cleanWs()
+    }
+  }
+}
