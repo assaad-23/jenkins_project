@@ -1,58 +1,46 @@
 pipeline {
   agent any
-
-  environment {
-    VENV = "venv"
-    PIP  = "venv\\Scripts\\pip"
-    PY   = "venv\\Scripts\\python"
-    F8   = "venv\\Scripts\\flake8"
-    PYT  = "venv\\Scripts\\pytest"
-    COV  = "venv\\Scripts\\coverage"
-    BAND = "venv\\Scripts\\bandit"
-  }
-
-  options {
-    ansiColor('xterm')
-  }
-
+  options { ansiColor('xterm') }  
   stages {
     stage('Setup') {
       steps {
         bat '''
-          if not exist %VENV% (
-            python -m venv %VENV%
-          )
-          %PIP% install --upgrade pip
-          %PIP% install -r requirements.txt
+          if not exist "venv" ( python -m venv "venv" )
+          "venv\\Scripts\\python" -m pip install --upgrade pip
+          "venv\\Scripts\\python" -m pip install -r requirements.txt
         '''
       }
     }
 
     stage('Lint') {
       steps {
-        bat '%F8% app.py'
+        bat '"venv\\Scripts\\python" -m flake8 app.py'
       }
     }
 
     stage('Test') {
       steps {
-        bat '%PYT% -q --junitxml=pytest-report.xml'
+        bat '''
+          set "PYTHONPATH=%CD%"
+          "venv\\Scripts\\python" -m pytest -q --junitxml=pytest-report.xml
+        '''
       }
     }
 
     stage('Coverage') {
       steps {
         bat '''
-          %COV% run -m pytest
-          %COV% html
-          %COV% report
+          set "PYTHONPATH=%CD%"
+          "venv\\Scripts\\python" -m coverage run -m pytest
+          "venv\\Scripts\\python" -m coverage html
+          "venv\\Scripts\\python" -m coverage report
         '''
       }
     }
 
     stage('Security Scan') {
       steps {
-        bat '%BAND% -r . -f html -o bandit-report.html'
+        bat '"venv\\Scripts\\python" -m bandit -r . -x venv,tests,__pycache__,node_modules -f html -o bandit-report.html'
       }
     }
 
@@ -69,22 +57,29 @@ pipeline {
 
   post {
     always {
+      // Test results (ok if empty)
       junit allowEmptyResults: true, testResults: 'pytest-report.xml'
 
-      publishHTML(target: [
-        reportName: 'Coverage Report',
-        reportDir: 'htmlcov',
-        reportFiles: 'index.html',
-        keepAll: true,
-        alwaysLinkToLastBuild: true
-      ])
-      publishHTML(target: [
-        reportName: 'Bandit Security Report',
-        reportDir: '.',
-        reportFiles: 'bandit-report.html',
-        keepAll: true,
-        alwaysLinkToLastBuild: true
-      ])
+      script {
+        if (fileExists('htmlcov/index.html')) {
+          publishHTML(target: [
+            reportName: 'Coverage Report',
+            reportDir: 'htmlcov',
+            reportFiles: 'index.html',
+            keepAll: true,
+            alwaysLinkToLastBuild: true
+          ])
+        }
+        if (fileExists('bandit-report.html')) {
+          publishHTML(target: [
+            reportName: 'Bandit Security Report',
+            reportDir: '.',
+            reportFiles: 'bandit-report.html',
+            keepAll: true,
+            alwaysLinkToLastBuild: true
+          ])
+        }
+      }
 
       cleanWs()
     }
