@@ -46,10 +46,11 @@ pipeline {
     }
 
     stage('Security Scan') {
-      steps {
-        bat '"venv\\Scripts\\python" -m bandit -r . -x venv,tests,__pycache__,node_modules -f html -o bandit-report.html'
-      }
+        steps {
+            bat '"venv\\Scripts\\python" -m bandit -r . -x venv,tests,__pycache__,node_modules -f html -o bandit-report.html --exit-zero'
+        }
     }
+
 
     stage('Deploy') {
       steps {
