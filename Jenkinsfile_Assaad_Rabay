@@ -3,32 +3,16 @@ pipeline {
   options { ansiColor('xterm') }
 
   environment {
-    // <-- set to the exact path you saw in the logs
     PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
   }
 
   stages {
-    stage('Check Python') {
-      steps {
-        bat '''
-          echo ===== PATH =====
-          echo %PATH%
-
-          echo ===== Using Python =====
-          where python
-          "%PYTHON_EXE%" -V
-
-          rem Don't fail the build if 'py' is missing
-          where py || echo py.exe not found (ok)
-        '''
-      }
-    }
-
     stage('Setup') {
       steps {
         bat '''
-          rem Recreate a clean venv from the real python
+          rem Always start clean to avoid old/bad venvs
           if exist "venv" rmdir /s /q "venv"
+
           "%PYTHON_EXE%" -m venv "venv"
           "venv\\Scripts\\python" -c "import sys; print('VENV PY:', sys.executable)"
 
@@ -77,28 +61,14 @@ pipeline {
   post {
     always {
       junit allowEmptyResults: true, testResults: 'pytest-report.xml'
-
       script {
         if (fileExists('htmlcov/index.html')) {
-          publishHTML(target: [
-            reportName: 'Coverage Report',
-            reportDir: 'htmlcov',
-            reportFiles: 'index.html',
-            keepAll: true,
-            alwaysLinkToLastBuild: true
-          ])
+          publishHTML(target: [reportName: 'Coverage Report', reportDir: 'htmlcov', reportFiles: 'index.html', keepAll: true, alwaysLinkToLastBuild: true])
         }
         if (fileExists('bandit-report.html')) {
-          publishHTML(target: [
-            reportName: 'Bandit Security Report',
-            reportDir: '.',
-            reportFiles: 'bandit-report.html',
-            keepAll: true,
-            alwaysLinkToLastBuild: true
-          ])
+          publishHTML(target: [reportName: 'Bandit Security Report', reportDir: '.', reportFiles: 'bandit-report.html', keepAll: true, alwaysLinkToLastBuild: true])
         }
       }
-
       cleanWs()
     }
   }
